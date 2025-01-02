@@ -1,16 +1,32 @@
 import logging
 import sys
-from lsp import LSP, LSPMessage
+from lsp import LSP
+
 
 logger = logging.getLogger(__name__)
+
 
 def main():
     logging.basicConfig(filename='/home/igor/work/lsp/logs/lsp.log', level=logging.DEBUG)
     
     lsp = LSP()
     
-    for line in sys.stdin:
-        lsp.handle_message(line)
+    while lsp.running:
+        if lsp.content_length > 0:
+            line = sys.stdin.read(lsp.content_length)
+       
+            response = lsp.handle_message(line)
+            
+            if response is not None:
+                logger.debug(f"Response: {response}")
+                print(lsp.encode_message(response))
+                sys.stdout.flush()
+        else:
+            line = sys.stdin.readline()
+            if line.startswith("Content-Length: "):
+                lsp.decode_content_length(line)
+                sys.stdin.readline()
+
 
 if __name__ == "__main__":
     main()
