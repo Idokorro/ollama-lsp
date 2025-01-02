@@ -27,6 +27,11 @@ def main():
                 lsp.decode_content_length(line)
                 sys.stdin.readline()
 
+    if lsp.shutting_down:
+        sys.exit(0)
+    else:
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
