@@ -1,8 +1,10 @@
 import logging
-from dataclasses import dataclass
-from typing import Any, Optional, List, Tuple
 
+from dataclasses import dataclass
+from typing import Any, Optional, List
 from dataclasses_json import dataclass_json
+
+from ollama import chat, ChatResponse
 
 
 logger = logging.getLogger(__name__)
@@ -28,7 +30,7 @@ class LSPResponse:
 
 class LSP:
     def __init__(self):
-        self.documents: dict[str, Tuple[Tuple[int, int], List[str]]] = {}
+        self.documents: dict[str, List[str]] = {}
 
         self.message: LSPRequest | None = None
         self.content_length: int = -1
@@ -83,7 +85,8 @@ class LSP:
                         "textDocumentSync": {
                             "openClose": True,
                             "change": 2
-                        }
+                        },
+                        "completionProvider": {}
                     },
                     "serverInfo": { 
                         "Name": "Overkill LSP",
@@ -125,6 +128,8 @@ class LSP:
                 error={ "code": -32603, "message": "Server error" }
             )
 
+        response = None
+
         match self.message.method:
             case "textDocument/didOpen":
                 if self.message.params is not None:
@@ -133,7 +138,7 @@ class LSP:
                     doc = self.message.params['textDocument']['uri']
                     content = self.message.params['textDocument']['text'].splitlines(True)
 
-                    self.documents[doc] = ((0, 0), content)
+                    self.documents[doc] = content
 
                     logger.debug(f"Documents: {self.documents.keys()}")
                     logger.debug(f"Document content: {self.documents[doc]}")
@@ -154,9 +159,48 @@ class LSP:
                     doc = self.message.params['textDocument']['uri']
                     changes = self.message.params['contentChanges']
                     
-                    self.handle_document_change(doc, changes)
+                    response = self.handle_document_change(doc, changes)
 
                     logger.debug(f"Document content: {self.documents[doc]}")
+            case "textDocument/completion":
+                if self.message.params is not None:
+                    logger.info(f"Completion requested - {self.message.params['textDocument']['uri']}")
+
+                    doc = self.message.params['textDocument']['uri']
+                    position = self.message.params['position']
+
+                    response = self.handle_completion(doc, position)
+
+        return response
+
+    def handle_completion(self, doc: str, position: dict[str, int]):
+        document = self.documents[doc]
+        
+        to_complete = document[:position["line"]]
+        to_complete.append(document[position["line"]][:position["character"]])
+        to_complete = "".join(to_complete)
+        last_word = to_complete.split()[-1]
+
+        prompt = "Complete the following text: " + to_complete
+        ai_resp: ChatResponse = chat(model="llama3.2:3b", messages=[{ "role": "user", "content": prompt }])
+        
+        return LSPResponse(
+            jsonrpc="2.0",
+            id=self.get_msg_id(),
+            result={
+                "isIncomplete": False,
+                "items": [
+                    {
+                        "label": last_word,
+                        "kind": 15,
+                        "documentation": ai_resp.message.content,
+                        "insertText": ai_resp.message.content,
+                        "insertTextFormat": 2,
+                        "insertTextMode": 1
+                    }
+                ]
+            }
+        )
 
     def handle_document_change(self, doc: str, changes: List[dict[str, Any]]):
         if doc not in self.documents:
@@ -168,7 +212,7 @@ class LSP:
                 error={ "code": -32001, "message": "Document not found" }
             )
 
-        content = self.documents[doc][1]
+        content = self.documents[doc]
 
         start_char = 0
         start_line = 0
@@ -214,7 +258,7 @@ class LSP:
             except Exception as e:
                 logger.error(f"Error changing document: {e}")
 
-        self.documents[doc] = ((start_line, start_char + 1), content)
+        self.documents[doc] = content
 
     def check_initialized(self):
         if not self.initialized:

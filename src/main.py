@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    logging.basicConfig(filename='/home/igor/work/lsp/logs/lsp.log', level=logging.DEBUG)
+    logging.basicConfig(filename='/home/igor/work/lsp/logs/lsp.log', level=logging.ERROR)
     
     lsp = LSP()
     
