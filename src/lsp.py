@@ -135,7 +135,7 @@ class LSP:
 
                     self.documents[doc] = ((0, 0), content)
 
-                    logger.debug(f"Documents: {self.documents.keys()} at {self.start_time}")
+                    logger.debug(f"Documents: {self.documents.keys()}")
                     logger.debug(f"Document content: {self.documents[doc]}")
 
             case "textDocument/didClose":
@@ -179,15 +179,32 @@ class LSP:
             end_char = change["range"]["end"]["character"]
             end_line = change["range"]["end"]["line"]
 
-            new_char = change["text"]
+            new_chars = change["text"].splitlines(True)
+            if len(new_chars) == 0:
+                new_chars = [""]
 
             try:
-                end_of_line = content[end_line][end_char:]
+                if end_line >= len(content):
+                    end_line = len(content) - 1
+                    start_line = len(content) - 2
+                    start_char = len(content[start_line])
+                    end_of_line = ""
+                else:
+                    end_of_line = content[end_line][end_char:]
 
                 while start_line < end_line:
                     content.pop(start_line + 1)
                     end_line -= 1
 
+                new_char = new_chars.pop(0)
+                while len(new_chars) >= 1:
+                    content[start_line] = content[start_line][:start_char] + new_char
+                    content.insert(start_line + 1, "")
+                    start_line += 1
+                    start_char = 0
+                    new_char = new_chars.pop(0)
+
+                
                 if new_char.startswith("\n"):
                     content[start_line] = content[start_line][:start_char] + new_char[0]
                     content.insert(start_line + 1, new_char[1:] + end_of_line)
